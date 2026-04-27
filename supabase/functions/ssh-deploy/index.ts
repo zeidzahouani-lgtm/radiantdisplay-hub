@@ -498,6 +498,7 @@ async function syncSupabaseKongPorts(conn: Client, supaDir: string, kongHttpPort
 async function syncLocalAuthSafeEnv(conn: Client, supaDir: string, log: (m: string) => Promise<void> | void) {
   const envPatch = [
     "SUPABASE_URL=http://kong:8000",
+    "FUNCTIONS_VERIFY_JWT=false",
     "ENABLE_EMAIL_AUTOCONFIRM=true",
     "ENABLE_PHONE_SIGNUP=false",
     "ENABLE_PHONE_AUTOCONFIRM=true",
@@ -525,13 +526,15 @@ async function syncLocalEdgeFunctions(conn: Client, remoteDir: string, supaDir: 
   await log("→ Synchronisation des fonctions backend locales…");
   const cmd =
     `mkdir -p ${supaDir}/volumes/functions && ` +
-    `rm -rf ${supaDir}/volumes/functions/* && ` +
-    `cp -a ${fnDir}/. ${supaDir}/volumes/functions/ && ` +
+    `MAIN_SRC=${shQuote(`${supaDir}/supabase-repo/docker/volumes/functions/main`)} && ` +
+    `MAIN_DST=${shQuote(`${supaDir}/volumes/functions/main`)} && ` +
+    `if [ ! -d "$MAIN_DST" ] && [ -d "$MAIN_SRC" ]; then mkdir -p "$MAIN_DST" && cp -a "$MAIN_SRC"/. "$MAIN_DST"/; fi && ` +
+    `for d in ${fnDir}/*; do [ -d "$d" ] || continue; name=$(basename "$d"); [ "$name" = main ] && continue; rm -rf ${supaDir}/volumes/functions/"$name"; cp -a "$d" ${supaDir}/volumes/functions/"$name"; done && ` +
     `cd ${supaDir} && ` +
     `anon=$(grep -E '^ANON_KEY=' .env | head -1 | cut -d= -f2-); ` +
     `svc=$(grep -E '^SERVICE_ROLE_KEY=' .env | head -1 | cut -d= -f2-); ` +
-    `for k in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do sed -i "/^$k=/d" .env; done; ` +
-    `printf 'SUPABASE_URL=http://kong:8000\nSUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' "$anon" "$svc" >> .env; ` +
+    `for k in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY FUNCTIONS_VERIFY_JWT; do sed -i "/^$k=/d" .env; done; ` +
+    `printf 'SUPABASE_URL=http://kong:8000\nSUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\nFUNCTIONS_VERIFY_JWT=false\n' "$anon" "$svc" >> .env; ` +
     `(docker compose up -d --no-deps functions 2>&1 || docker compose up -d --no-deps edge-runtime 2>&1 || true); ` +
     `(docker compose restart functions 2>&1 || docker compose restart edge-runtime 2>&1 || true)`;
   const result = await exec(conn, cmd);
