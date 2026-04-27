@@ -29,31 +29,57 @@ export default function FirstAdminLogin() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [organizationName, setOrganizationName] = useState("Mon organisation");
+  const [screenName, setScreenName] = useState("Écran principal");
   const [showPwd, setShowPwd] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [hasAdmin, setHasAdmin] = useState<boolean | null>(null);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>("checking");
+  const [backendMessage, setBackendMessage] = useState("");
   const [checking, setChecking] = useState(true);
 
-  // On mount, check if an admin already exists
+  const canSubmit = useMemo(
+    () => email.trim().length > 3 && password.length >= 8 && organizationName.trim().length > 1 && screenName.trim().length > 1 && backendStatus === "ready" && !submitting,
+    [backendStatus, email, organizationName, password, screenName, submitting],
+  );
+
+  const checkBackend = async () => {
+    setChecking(true);
+    setBackendStatus("checking");
+    setBackendMessage("");
+    try {
+      const [adminCheck, restoreCheck] = await Promise.all([
+        supabase.functions.invoke("bootstrap-admin", { body: { action: "check" } }),
+        supabase.functions.invoke("restore-backup", { body: { tables: {}, mode: "upsert" } }),
+      ]);
+
+      if (adminCheck.error) throw adminCheck.error;
+      if (restoreCheck.error) throw restoreCheck.error;
+
+      setHasAdmin(Boolean(adminCheck.data?.has_admin));
+      setBackendStatus("ready");
+    } catch (e: any) {
+      console.error(e);
+      setHasAdmin(null);
+      setBackendStatus("blocked");
+      setBackendMessage(e?.message || "Les fonctions bootstrap-admin/restore-backup ne répondent pas.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
   useEffect(() => {
     (async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke("bootstrap-admin", {
-          body: { action: "check" },
-        });
-        if (error) throw error;
-        setHasAdmin(Boolean(data?.has_admin));
-      } catch (e) {
-        console.error(e);
-        setHasAdmin(null);
-      } finally {
-        setChecking(false);
-      }
+      await checkBackend();
     })();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (backendStatus !== "ready") {
+      toast.error("Backend non joignable : impossible de créer l'admin.");
+      return;
+    }
     if (!email.trim() || !password) {
       toast.error("Renseignez l'email et le mot de passe.");
       return;
@@ -92,19 +118,34 @@ export default function FirstAdminLogin() {
       if (promoErr) throw promoErr;
       if (promo?.error) throw new Error(promo.error);
 
-      toast.success("Compte administrateur créé ✓");
-      setHasAdmin(true);
-
-      // Try to sign in (in case email confirmation was required)
       const { error: finalSignInErr } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
-      if (!finalSignInErr) {
-        setTimeout(() => navigate("/"), 600);
-      } else {
-        setTimeout(() => navigate("/login"), 1200);
-      }
+      if (finalSignInErr) throw finalSignInErr;
+
+      const organization = organizationName.trim();
+      const display = screenName.trim();
+      const { data: establishment, error: establishmentError } = await supabase
+        .from("establishments")
+        .insert({ name: organization, created_by: userId, max_screens: 0 } as any)
+        .select("id, name")
+        .single();
+      if (establishmentError) throw establishmentError;
+
+      const { error: membershipError } = await supabase
+        .from("user_establishments")
+        .insert({ user_id: userId, establishment_id: establishment.id, role: "admin" } as any);
+      if (membershipError) throw membershipError;
+
+      const { error: screenError } = await supabase
+        .from("screens")
+        .insert({ name: display, slug: slugify(display), user_id: userId, establishment_id: establishment.id } as any);
+      if (screenError) throw screenError;
+
+      toast.success("Premier lancement terminé ✓");
+      setHasAdmin(true);
+      setTimeout(() => navigate("/", { replace: true }), 600);
     } catch (e: any) {
       toast.error(e?.message || "Erreur lors de la création du compte admin.");
     } finally {
