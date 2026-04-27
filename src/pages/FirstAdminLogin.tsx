@@ -1,15 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  ShieldCheck, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff,
+  ShieldCheck, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff, Building2, DatabaseZap, RefreshCw,
 } from "lucide-react";
+
+type BackendStatus = "checking" | "ready" | "blocked";
+
+function slugify(value: string) {
+  const slug = value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+  return slug || `ecran-${Date.now()}`;
+}
 
 export default function FirstAdminLogin() {
   const navigate = useNavigate();
