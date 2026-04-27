@@ -1116,7 +1116,8 @@ CMD ["nginx","-g","daemon off;"]
         "content-action", "content-webhook", "generate-devis", "invite-user", "resend-ack",
         "screen-setup-guide", "send-credentials", "server-stats", "sync-client-dravox", "test-email",
       ];
-      const localFunctionLocations = localFunctions.map((name) => `  location = /functions/v1/${name} { proxy_pass http://host.docker.internal:${supaKongPort}/functions/v1/${name}; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto ${enableHttps ? "https" : "http"}; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }`).join("\n");
+      const functionProxyHeaders = `proxy_set_header Host $host; proxy_set_header Authorization $http_authorization; proxy_set_header apikey $http_apikey; proxy_set_header X-Client-Info $http_x_client_info; proxy_set_header X-Forwarded-Host $host; proxy_set_header X-Forwarded-Proto ${enableHttps ? "https" : "http"}; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`;
+      const localFunctionLocations = localFunctions.map((name) => `  location = /functions/v1/${name} { proxy_pass http://host.docker.internal:${supaKongPort}/functions/v1/${name}; ${functionProxyHeaders} }`).join("\n");
 
       const nginxConf = enableHttps
         ? `server {
