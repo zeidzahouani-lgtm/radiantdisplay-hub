@@ -497,6 +497,7 @@ async function syncSupabaseKongPorts(conn: Client, supaDir: string, kongHttpPort
 
 async function syncLocalAuthSafeEnv(conn: Client, supaDir: string, log: (m: string) => Promise<void> | void) {
   const envPatch = [
+    "SUPABASE_URL=http://kong:8000",
     "ENABLE_EMAIL_AUTOCONFIRM=true",
     "ENABLE_PHONE_SIGNUP=false",
     "ENABLE_PHONE_AUTOCONFIRM=true",
@@ -511,6 +512,31 @@ async function syncLocalAuthSafeEnv(conn: Client, supaDir: string, log: (m: stri
   const cmd = `cd ${supaDir} && for k in ${keys}; do sed -i "/^$k=/d" .env; done && printf '%s' '${b64}' | base64 -d >> .env && docker compose rm -sf auth 2>&1 || true`;
   await exec(conn, cmd);
   await log("✓ Configuration Auth locale sécurisée (hooks réseau désactivés)");
+}
+
+async function syncLocalEdgeFunctions(conn: Client, remoteDir: string, supaDir: string, log: (m: string) => Promise<void> | void) {
+  const fnDir = `${remoteDir}/repo/supabase/functions`;
+  const probe = await exec(conn, `[ -d ${fnDir} ] && echo OK || echo MISSING`);
+  if (!probe.stdout.includes("OK")) {
+    await log("⚠ Aucun dossier de fonctions backend trouvé dans le repo cloné.");
+    return;
+  }
+
+  await log("→ Synchronisation des fonctions backend locales…");
+  const cmd =
+    `mkdir -p ${supaDir}/volumes/functions && ` +
+    `rm -rf ${supaDir}/volumes/functions/* && ` +
+    `cp -a ${fnDir}/. ${supaDir}/volumes/functions/ && ` +
+    `cd ${supaDir} && ` +
+    `anon=$(grep -E '^ANON_KEY=' .env | head -1 | cut -d= -f2-); ` +
+    `svc=$(grep -E '^SERVICE_ROLE_KEY=' .env | head -1 | cut -d= -f2-); ` +
+    `for k in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do sed -i "/^$k=/d" .env; done; ` +
+    `printf 'SUPABASE_URL=http://kong:8000\nSUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' "$anon" "$svc" >> .env; ` +
+    `(docker compose up -d --no-deps functions 2>&1 || docker compose up -d --no-deps edge-runtime 2>&1 || true); ` +
+    `(docker compose restart functions 2>&1 || docker compose restart edge-runtime 2>&1 || true)`;
+  const result = await exec(conn, cmd);
+  await log((`${result.stdout}${result.stderr}`).slice(-1200));
+  await log("✓ Fonctions backend locales synchronisées");
 }
 
 async function ensureLocalAuthGateway(conn: Client, supaDir: string, kongPort: string, log: (m: string) => Promise<void> | void) {
