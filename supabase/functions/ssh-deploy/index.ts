@@ -1029,8 +1029,8 @@ async function runDeployment(body: DeployBody, log: (m: string) => Promise<void>
         log("✓ Repo cloned");
       }
 
-      // ===== Apply app migrations to local Supabase, then promote admin =====
-      const pending = (globalThis as any).__pendingAdminPromotion;
+      // ===== Apply app migrations to local Supabase =====
+      const pending = (globalThis as any).__pendingLocalMigrations;
       if (pending?.supaDir) {
         await ensurePostgresSqlAccess(conn, pending.supaDir, log);
         log("→ Application des migrations de l'application sur Supabase local…");
@@ -1057,24 +1057,6 @@ async function runDeployment(body: DeployBody, log: (m: string) => Promise<void>
         }
         log(applyMig.stdout.slice(-1500));
         log("✓ Migrations appliquées (les erreurs 'already exists' sont normales)");
-
-        log("→ Promotion du compte screenflow en admin global…");
-        await ensurePostgresSqlAccess(conn, pending.supaDir, log);
-        await ensureDefaultAdminRole(conn, pending.supaDir, log);
-
-        await log("→ Test réel du login admin local…");
-        const internalSupaUrl = `http://127.0.0.1:${supaKongPort}`;
-        await ensureLocalAuthGateway(conn, pending.supaDir, supaKongPort, log);
-        await verifyAuthLoginFromServer(
-          conn,
-          internalSupaUrl,
-          supabaseAnonOverride,
-          DEFAULT_ADMIN_EMAIL,
-          DEFAULT_ADMIN_PASSWORD,
-          log,
-          buildDirectKongAuthLoginCommand(pending.supaDir, supabaseAnonOverride, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD),
-        );
-        await verifyPublicAuthLogin(supabaseUrlOverride, supabaseAnonOverride, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD, log);
       }
 
 
