@@ -956,16 +956,9 @@ async function runDeployment(body: DeployBody, log: (m: string) => Promise<void>
         log(`  • DB:     postgres://postgres:${postgresPw}@${body.host}:${supaDbPort}/postgres`);
         log(`  ⚠ Notez le mot de passe du dashboard, il ne sera pas réaffiché.`);
 
-        // ===== Create default global admin account (screenflow / 260390DS) =====
-        log("→ Création/réparation du compte admin par défaut (screenflow@screenflow.local)…");
-        // Wait for Postgres to be ready and ensure psql runs as the DB container user.
-        await ensurePostgresSqlAccess(conn, supaDir, log);
-
-        await upsertDefaultAdminViaAuthApi(conn, supaDir, supaKongPort, serviceKey, DEFAULT_ADMIN_PASSWORD, log);
-
-        // ===== Apply app migrations from cloned repo, then promote admin role =====
+        // ===== Apply app migrations from cloned repo =====
         // Note: we apply this AFTER the repo is cloned below. We schedule it via a marker.
-        (globalThis as any).__pendingAdminPromotion = { supaDir, postgresPw: postgresPw };
+        (globalThis as any).__pendingLocalMigrations = { supaDir, postgresPw: postgresPw };
       }
 
       // ===== Existing Supabase: extract keys from existing .env and ensure containers are up =====
@@ -995,10 +988,7 @@ async function runDeployment(body: DeployBody, log: (m: string) => Promise<void>
         supabaseAnonOverride = anonKey;
         supabaseProjectIdOverride = "local";
         await log("✓ Supabase local opérationnel (clés réutilisées depuis .env)");
-        // Ensure admin still exists / re-sync password
-        await ensurePostgresSqlAccess(conn, supaDir, log);
-        await upsertDefaultAdminViaAuthApi(conn, supaDir, supaKongPort, serviceKey, DEFAULT_ADMIN_PASSWORD, log);
-        (globalThis as any).__pendingAdminPromotion = { supaDir, postgresPw };
+        (globalThis as any).__pendingLocalMigrations = { supaDir, postgresPw };
       }
 
       log(`→ Preparing remote directory ${remoteDir}…`);
