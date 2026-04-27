@@ -23,11 +23,12 @@ Deno.serve(async (req) => {
     const admin0 = createClient(supabaseUrl, serviceKey);
 
     const authHeader = req.headers.get("Authorization");
+    const bearerToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
 
     // Bootstrap mode: allow unauthenticated restore ONLY when no admin exists yet.
     // This is used by the public login page to seed an empty instance from a JSON backup.
     let isBootstrap = false;
-    if (!authHeader) {
+    if (!authHeader || bearerToken === anonKey) {
       const { count } = await admin0
         .from("user_roles")
         .select("id", { count: "exact", head: true })
